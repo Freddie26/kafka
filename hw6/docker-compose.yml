@@ -1,0 +1,116 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
+    healthcheck:
+      test: "[[ $$(echo srvr | nc localhost 2181 | grep -oG 'Mode: standalone') = \"Mode: standalone\" ]]"
+      interval: 10s
+      timeout: 1s
+      retries: 30
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: "test $$( /usr/bin/zookeeper-shell zookeeper:2181 get /brokers/ids/1 | grep { ) != ''"
+      interval: 3s
+      timeout: 2s
+      retries: 300
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - "9092:9092"
+
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      - zookeeper
+      - kafka
+    ports:
+      - 8082:8080
+    environment:
+      DYNAMIC_CONFIG_ENABLED: true
+      KAFKA_CLUSTERS_0_NAME: kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  connect:
+    image: confluentinc/cp-kafka-connect:7.6.1
+    hostname: connect
+    container_name: connect
+    depends_on:
+      - zookeeper
+      - kafka
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: 'kafka:9092'
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_REST_PORT: 8080
+      CONNECT_GROUP_ID: docker-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      ACCESS_CONTROL_ALLOW_METHODS: 'GET,POST,PUT,DELETE,OPTIONS'
+      ACCESS_CONTROL_ALLOW_ORIGIN: '*'
+      CONNECT_PLUGIN_PATH: "/usr/share/java"
+    volumes:
+      - ./kafka-connect/debezium-debezium-connector-postgresql-2.5.4:/usr/share/java/debezium-debezium-connector-postgresql-2.5.4
+
+  connect-ui:
+    image: landoop/kafka-connect-ui
+    container_name: kafka-connect-ui
+    ports:
+      - '8084:8084'
+    environment:
+      CONNECT_URL: 'http://connect:8083'
+      PORT: '8084'
+
+  postgres:
+    hostname: postgres
+    image: postgres:14-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kafka_connect_demo
+      POSTGRES_USER: connectuser
+      POSTGRES_PASSWORD: connectpassword
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U connectuser -D postgres" ]
+      interval: 5s
+      timeout: 2s
+      retries: 25
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: postgres -c 'config_file=/etc/postgresql/postgresql.conf'
+
+volumes:
+  postgres:
+    name: postgres_data
