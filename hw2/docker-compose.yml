@@ -1,0 +1,53 @@
+services:
+  kraft:
+    image: 'confluentinc/cp-kafka:7.6.1'
+    environment:
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_ENABLE_KRAFT: yes
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kraft:9093
+      KAFKA_LISTENERS: CONTROLLER://:9091,BROKER://:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:SASL_PLAINTEXT,BROKER:SASL_PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      KAFKA_BROKER_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kraft:9091
+      ALLOW_PLAINTEXT_LISTENER: yes
+      CLUSTER_ID: L0ZEQh1yTbGhNNUE7-6wSQ
+      KAFKA_NODE_ID: 1
+      KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_SUPER_USERS: 'User:adminuser'
+      KAFKA_LISTENER_NAME_BROKER_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_AUTHORIZER_CLASS_NAME: 'org.apache.kafka.metadata.authorizer.StandardAuthorizer'
+      KAFKA_OPTS: '-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf'
+    ports:
+      - '9093:9093'
+    volumes:
+      - ./broker_config/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./client_config/admin-sasl.properties:/tmp/admin-sasl.properties
+      - ./client_config/bob-sasl.properties:/tmp/bob-sasl.properties
+      - ./client_config/alice-sasl.properties:/tmp/alice-sasl.properties
+      - ./client_config/alex-sasl.properties:/tmp/alex-sasl.properties
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - '8082:8080'
+    environment:
+      DYNAMIC_CONFIG_ENABLED: true
+      KAFKA_CLUSTERS_0_NAME: kraft
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kraft:9093
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: PLAIN
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="adminuser" password="adminpass";'
+
+volumes:
+  kafka-volume:
+    name: kafka-volume
